@@ -70,9 +70,9 @@ export interface Category {
   level_depth: string
 }
 
-// Get image URL
+// Get image URL via proxy to avoid authentication popup
 export function getImageUrl(productId: number, imageId: number | string): string {
-  return `${PUBLIC_URL}/api/images/products/${productId}/${imageId}?ws_key=${API_KEY}`
+  return `/api/image?productId=${productId}&imageId=${imageId}`
 }
 
 // Raw types from API
