@@ -21,6 +21,27 @@ async function fetchAPI<T>(endpoint: string): Promise<T> {
   return res.json()
 }
 
+// Helper to extract multilingual value (French = id 1)
+type MultiLangValue = string | Array<{ id: string; value: string }> | Record<string, string>
+
+function getLocalizedValue(field: MultiLangValue): string {
+  if (!field) return ''
+  if (typeof field === 'string') return field
+
+  // Array format: [{id: "1", value: "..."}, {id: "2", value: "..."}]
+  if (Array.isArray(field)) {
+    const french = field.find(f => f.id === '1')
+    return french?.value || field[0]?.value || ''
+  }
+
+  // Object format: {"1": "...", "2": "..."}
+  if (typeof field === 'object') {
+    return (field as Record<string, string>)['1'] || Object.values(field)[0] || ''
+  }
+
+  return ''
+}
+
 // Types
 export interface Product {
   id: number
@@ -43,33 +64,50 @@ export interface Category {
   level_depth: string
 }
 
-export interface ProductImage {
-  id: number
-  id_product: string
-}
-
 // Get image URL
 export function getImageUrl(productId: number, imageId: number | string): string {
   return `${PUBLIC_URL}/api/images/products/${productId}/${imageId}?ws_key=${API_KEY}`
 }
 
+// Raw types from API
+interface RawProduct {
+  id: number
+  name: MultiLangValue
+  description: MultiLangValue
+  description_short: MultiLangValue
+  price: string
+  reference: string
+  id_category_default: string
+  id_default_image: string
+  active: string
+}
+
+interface RawCategory {
+  id: number
+  name: MultiLangValue
+  description: MultiLangValue
+  id_parent: string
+  active: string
+  level_depth: string
+}
+
 // Queries
 export async function getProducts(): Promise<Product[]> {
   try {
-    const data = await fetchAPI<{ products: { product: Product[] } | { product: Product } }>('products?display=full&filter[active]=[1]')
+    const data = await fetchAPI<{ products: RawProduct[] }>('products?display=full&filter[active]=[1]&output_format=JSON')
 
-    if (!data.products) return []
+    if (!data.products || !Array.isArray(data.products)) return []
 
-    // Handle single product vs array
-    const products = Array.isArray(data.products.product)
-      ? data.products.product
-      : [data.products.product]
-
-    return products.map(p => ({
-      ...p,
-      name: typeof p.name === 'object' ? (p.name as Record<string, string>)[1] || Object.values(p.name as object)[0] : p.name,
-      description: typeof p.description === 'object' ? (p.description as Record<string, string>)[1] || Object.values(p.description as object)[0] : p.description,
-      description_short: typeof p.description_short === 'object' ? (p.description_short as Record<string, string>)[1] || Object.values(p.description_short as object)[0] : p.description_short,
+    return data.products.map(p => ({
+      id: p.id,
+      name: getLocalizedValue(p.name),
+      description: getLocalizedValue(p.description),
+      description_short: getLocalizedValue(p.description_short),
+      price: p.price,
+      reference: p.reference || '',
+      id_category_default: p.id_category_default,
+      id_default_image: p.id_default_image,
+      active: p.active,
     }))
   } catch (error) {
     console.error('Error fetching products:', error)
@@ -79,16 +117,21 @@ export async function getProducts(): Promise<Product[]> {
 
 export async function getProduct(id: number): Promise<Product | null> {
   try {
-    const data = await fetchAPI<{ product: Product }>(`products/${id}?display=full`)
+    const data = await fetchAPI<{ product: RawProduct }>(`products/${id}?display=full&output_format=JSON`)
 
     if (!data.product) return null
 
     const p = data.product
     return {
-      ...p,
-      name: typeof p.name === 'object' ? (p.name as Record<string, string>)[1] || Object.values(p.name as object)[0] : p.name,
-      description: typeof p.description === 'object' ? (p.description as Record<string, string>)[1] || Object.values(p.description as object)[0] : p.description,
-      description_short: typeof p.description_short === 'object' ? (p.description_short as Record<string, string>)[1] || Object.values(p.description_short as object)[0] : p.description_short,
+      id: p.id,
+      name: getLocalizedValue(p.name),
+      description: getLocalizedValue(p.description),
+      description_short: getLocalizedValue(p.description_short),
+      price: p.price,
+      reference: p.reference || '',
+      id_category_default: p.id_category_default,
+      id_default_image: p.id_default_image,
+      active: p.active,
     }
   } catch (error) {
     console.error('Error fetching product:', error)
@@ -98,21 +141,20 @@ export async function getProduct(id: number): Promise<Product | null> {
 
 export async function getCategories(): Promise<Category[]> {
   try {
-    const data = await fetchAPI<{ categories: { category: Category[] } | { category: Category } }>('categories?display=full&filter[active]=[1]')
+    const data = await fetchAPI<{ categories: RawCategory[] }>('categories?display=full&filter[active]=[1]&output_format=JSON')
 
-    if (!data.categories) return []
-
-    const categories = Array.isArray(data.categories.category)
-      ? data.categories.category
-      : [data.categories.category]
+    if (!data.categories || !Array.isArray(data.categories)) return []
 
     // Filter out root categories (level_depth 0 and 1)
-    return categories
-      .filter(c => parseInt(c.level_depth) > 1)
+    return data.categories
+      .filter(c => c.level_depth && parseInt(c.level_depth) > 1)
       .map(c => ({
-        ...c,
-        name: typeof c.name === 'object' ? (c.name as Record<string, string>)[1] || Object.values(c.name as object)[0] : c.name,
-        description: typeof c.description === 'object' ? (c.description as Record<string, string>)[1] || Object.values(c.description as object)[0] : c.description,
+        id: c.id,
+        name: getLocalizedValue(c.name),
+        description: getLocalizedValue(c.description),
+        id_parent: c.id_parent,
+        active: c.active,
+        level_depth: c.level_depth,
       }))
   } catch (error) {
     console.error('Error fetching categories:', error)
