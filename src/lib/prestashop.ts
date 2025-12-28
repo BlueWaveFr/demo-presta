@@ -42,6 +42,12 @@ function getLocalizedValue(field: MultiLangValue): string {
   return ''
 }
 
+// Helper to strip HTML tags from text
+export function stripHtml(html: string): string {
+  if (!html) return ''
+  return html.replace(/<[^>]*>/g, '').trim()
+}
+
 // Types
 export interface Product {
   id: number
@@ -151,13 +157,57 @@ export async function getCategories(): Promise<Category[]> {
       .map(c => ({
         id: c.id,
         name: getLocalizedValue(c.name),
-        description: getLocalizedValue(c.description),
+        description: stripHtml(getLocalizedValue(c.description)),
         id_parent: c.id_parent,
         active: c.active,
         level_depth: c.level_depth,
       }))
   } catch (error) {
     console.error('Error fetching categories:', error)
+    return []
+  }
+}
+
+export async function getCategory(id: number): Promise<Category | null> {
+  try {
+    const data = await fetchAPI<{ category: RawCategory }>(`categories/${id}?display=full&output_format=JSON`)
+
+    if (!data.category) return null
+
+    const c = data.category
+    return {
+      id: c.id,
+      name: getLocalizedValue(c.name),
+      description: stripHtml(getLocalizedValue(c.description)),
+      id_parent: c.id_parent,
+      active: c.active,
+      level_depth: c.level_depth,
+    }
+  } catch (error) {
+    console.error('Error fetching category:', error)
+    return null
+  }
+}
+
+export async function getProductsByCategory(categoryId: number): Promise<Product[]> {
+  try {
+    const data = await fetchAPI<{ products: RawProduct[] }>(`products?display=full&filter[active]=[1]&filter[id_category_default]=[${categoryId}]&output_format=JSON`)
+
+    if (!data.products || !Array.isArray(data.products)) return []
+
+    return data.products.map(p => ({
+      id: p.id,
+      name: getLocalizedValue(p.name),
+      description: getLocalizedValue(p.description),
+      description_short: getLocalizedValue(p.description_short),
+      price: p.price,
+      reference: p.reference || '',
+      id_category_default: p.id_category_default,
+      id_default_image: p.id_default_image,
+      active: p.active,
+    }))
+  } catch (error) {
+    console.error('Error fetching products by category:', error)
     return []
   }
 }
